@@ -56,8 +56,6 @@ struct RunOpts {
 fn main() {
     ::std::env::set_var("RUST_BACKTRACE", "full");
 
-    log4rs::init_file("network-log4rs.yaml", Default::default()).unwrap();
-
     let opts: Opts = Opts::parse();
 
     match opts.subcmd {
@@ -66,6 +64,8 @@ fn main() {
             println!("homepage: {}", GIT_HOMEPAGE);
         }
         SubCommand::Run(opts) => {
+            // init log4rs
+            log4rs::init_file("network-log4rs.yaml", Default::default()).unwrap();
             info!("grpc port of config service: {}", opts.config_port);
             info!("grpc port of this service: {}", opts.grpc_port);
             run(opts);
