@@ -56,3 +56,6 @@ localtime
 
 # log files
 logs/
+
+# private key
+*_privkey

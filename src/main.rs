@@ -80,7 +80,7 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 
 async fn fetch_config(config_port: String) -> Result<String, Box<dyn std::error::Error>> {
-    let config_addr = format!("127.0.0.1:{}", config_port);
+    let config_addr = format!("http://127.0.0.1:{}", config_port);
     let mut client = ConfigServiceClient::connect(config_addr).await?;
 
     // id of Network service is 0
@@ -97,7 +97,7 @@ async fn register_endpoint(
     config_port: String,
     port: String,
 ) -> Result<bool, Box<dyn std::error::Error>> {
-    let config_addr = format!("127.0.0.1:{}", config_port);
+    let config_addr = format!("http://127.0.0.1:{}", config_port);
     let mut client = ConfigServiceClient::connect(config_addr).await?;
 
     // id of Network service is 0
@@ -131,6 +131,7 @@ fn run(opts: RunOpts) {
             if ret.is_ok() {
                 break;
             }
+            debug!("register_endpoint failed {:?}", ret);
             thread::sleep(Duration::new(3, 0));
         }
         info!("register endpoint done!");
@@ -143,6 +144,8 @@ fn run(opts: RunOpts) {
                     info!("get new config!");
                     let _ = config_tx.send(config_str);
                 }
+            } else {
+                debug!("fetch_config failed {:?}", ret);
             }
             thread::sleep(Duration::new(30, 0));
         }
@@ -296,7 +299,7 @@ async fn dispatch_network_msg(
     port: String,
     msg: NetworkMsg,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dest_addr = format!("127.0.0.1:{}", port);
+    let dest_addr = format!("http://127.0.0.1:{}", port);
     let mut client = NetworkMsgHandlerServiceClient::connect(dest_addr).await?;
 
     let request = Request::new(msg);
