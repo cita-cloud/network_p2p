@@ -197,22 +197,18 @@ impl NetworkService for NetworkServer {
     ) -> Result<Response<SimpleResponse>, Status> {
         debug!("send_msg request: {:?}", request);
 
-        if self.p2p.read().is_some() {
-            let msg = request.into_inner();
-            let mut buf: Vec<u8> = Vec::new();
-            if msg.encode(&mut buf).is_ok() {
-                self.p2p
-                    .read()
-                    .as_ref()
-                    .unwrap()
-                    .send_message(msg.origin as usize, buf.as_slice());
+        let msg = request.into_inner();
+        let mut buf: Vec<u8> = Vec::new();
+        if msg.encode(&mut buf).is_ok() {
+            if let Some(p2p) = self.p2p.read().as_ref() {
+                p2p.send_message(msg.origin as usize, buf.as_slice());
                 let reply = SimpleResponse { is_success: true };
                 Ok(Response::new(reply))
             } else {
-                Err(Status::internal("encode msg failed"))
+                Err(Status::internal("network is not ready"))
             }
         } else {
-            Err(Status::internal("network is not ready"))
+            Err(Status::internal("encode msg failed"))
         }
     }
 
@@ -222,22 +218,18 @@ impl NetworkService for NetworkServer {
     ) -> Result<Response<SimpleResponse>, Status> {
         debug!("broadcast request: {:?}", request);
 
-        if self.p2p.read().is_some() {
-            let msg = request.into_inner();
-            let mut buf: Vec<u8> = Vec::new();
-            if msg.encode(&mut buf).is_ok() {
-                self.p2p
-                    .read()
-                    .as_ref()
-                    .unwrap()
-                    .broadcast_message(buf.as_slice());
+        let msg = request.into_inner();
+        let mut buf: Vec<u8> = Vec::new();
+        if msg.encode(&mut buf).is_ok() {
+            if let Some(p2p) = self.p2p.read().as_ref() {
+                p2p.broadcast_message(buf.as_slice());
                 let reply = SimpleResponse { is_success: true };
                 Ok(Response::new(reply))
             } else {
-                Err(Status::internal("encode msg failed"))
+                Err(Status::internal("network is not ready"))
             }
         } else {
-            Err(Status::internal("network is not ready"))
+            Err(Status::internal("encode msg failed"))
         }
     }
 
@@ -328,9 +320,9 @@ fn run_network(
             i if i == oper_config => {
                 // got new config
                 if let Ok(config_str) = config_rx.try_recv() {
-                    if p2p.read().is_some() {
-                        let old_p2p = p2p.write().take();
-                        old_p2p.unwrap().drop();
+                    let old_p2p_option = p2p.write().take();
+                    if let Some(old_p2p) = old_p2p_option {
+                        old_p2p.drop();
                         // wait for p2p's threads to finish
                         thread::sleep(Duration::new(5, 0));
                     }
