@@ -18,7 +18,6 @@ use serde_derive::Deserialize;
 pub struct NetConfig {
     pub port: u16,
     pub peers: Vec<PeerConfig>,
-    pub privkey_path: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -41,7 +40,6 @@ mod tests {
     fn basic_test() {
         let toml_str = r#"
         port = 40000
-        privkey_path = "0_privkey"
         [[peers]]
             ip = "127.0.0.1"
             port = 40001
@@ -53,7 +51,6 @@ mod tests {
         let config = NetConfig::new(toml_str);
 
         assert_eq!(config.port, 40000);
-        assert_eq!(config.privkey_path, "0_privkey".to_owned());
         assert_eq!(config.peers.len(), 2);
     }
 }

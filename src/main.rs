@@ -45,9 +45,6 @@ enum SubCommand {
 /// A subcommand for run
 #[derive(Clap)]
 struct RunOpts {
-    /// Sets grpc port of config service.
-    #[clap(short = "c", long = "config_port", default_value = "49999")]
-    config_port: String,
     /// Sets grpc port of this service.
     #[clap(short = "p", long = "port", default_value = "50000")]
     grpc_port: String,
@@ -66,100 +63,10 @@ fn main() {
         SubCommand::Run(opts) => {
             // init log4rs
             log4rs::init_file("network-log4rs.yaml", Default::default()).unwrap();
-            info!("grpc port of config service: {}", opts.config_port);
             info!("grpc port of this service: {}", opts.grpc_port);
             run(opts);
         }
     }
-}
-
-use cita_ng_proto::config::config_service_client::ConfigServiceClient;
-use cita_ng_proto::config::{Endpoint, RegisterEndpointInfo, ServiceId};
-use std::thread;
-use std::time::Duration;
-use tokio::runtime::Runtime;
-
-async fn fetch_config(config_port: String) -> Result<String, Box<dyn std::error::Error>> {
-    let config_addr = format!("http://127.0.0.1:{}", config_port);
-    let mut client = ConfigServiceClient::connect(config_addr).await?;
-
-    // id of Network service is 0
-    let request = Request::new(ServiceId { id: 0 });
-
-    let response = client.get_config(request).await?;
-
-    let config = response.into_inner().config;
-
-    Ok(config)
-}
-
-async fn register_endpoint(
-    config_port: String,
-    port: String,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let config_addr = format!("http://127.0.0.1:{}", config_port);
-    let mut client = ConfigServiceClient::connect(config_addr).await?;
-
-    // id of Network service is 0
-    let request = Request::new(RegisterEndpointInfo {
-        id: 0,
-        endpoint: Some(Endpoint {
-            hostname: "127.0.0.1".to_owned(),
-            port,
-        }),
-    });
-
-    let response = client.register_endpoint(request).await?;
-
-    Ok(response.into_inner().is_success)
-}
-
-fn run(opts: RunOpts) {
-    let mut rt = Runtime::new().unwrap();
-    let config_port = opts.config_port;
-    let grpc_port = opts.grpc_port;
-    let grpc_port_clone = grpc_port.clone();
-    let (config_tx, config_rx) = unbounded();
-    let p2p = Arc::new(RwLock::new(None));
-    let network_msg_dispatch_table = Arc::new(RwLock::new(HashMap::new()));
-
-    info!("connecting to config service!");
-    thread::spawn(move || {
-        // register_endpoint first
-        loop {
-            let ret = rt.block_on(register_endpoint(config_port.clone(), grpc_port.clone()));
-            if ret.is_ok() {
-                break;
-            }
-            debug!("register_endpoint failed {:?}", ret);
-            thread::sleep(Duration::new(3, 0));
-        }
-        info!("register endpoint done!");
-        let mut old_config_str = String::new();
-        loop {
-            let ret = rt.block_on(fetch_config(config_port.clone()));
-            if let Ok(config_str) = ret {
-                if config_str != old_config_str {
-                    old_config_str = config_str.clone();
-                    info!("get new config!");
-                    let _ = config_tx.send(config_str);
-                }
-            } else {
-                debug!("fetch_config failed {:?}", ret);
-            }
-            thread::sleep(Duration::new(30, 0));
-        }
-    });
-
-    info!("Start network!");
-    let p2p_clone = p2p.clone();
-    let network_msg_dispatch_table_clone = network_msg_dispatch_table.clone();
-    thread::spawn(move || {
-        run_network(config_rx, p2p_clone, network_msg_dispatch_table_clone);
-    });
-
-    info!("Start grpc server!");
-    let _ = run_grpc_server(grpc_port_clone, p2p, network_msg_dispatch_table);
 }
 
 use cita_ng_proto::common::{Empty, SimpleResponse};
@@ -167,19 +74,75 @@ use cita_ng_proto::network::{
     network_service_server::NetworkService, network_service_server::NetworkServiceServer,
     NetworkMsg, NetworkStatusResponse, RegisterInfo,
 };
-use parking_lot::RwLock;
 use prost::Message;
 use std::collections::HashMap;
+use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
+use cita_ng_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
+use config::NetConfig;
+use p2p_simple::{channel::unbounded, channel::Receiver, P2P};
+use std::fs::File;
+use std::io::Read;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
+use std::thread;
+use tokio::runtime::Runtime;
+
+fn run(opts: RunOpts) {
+    let grpc_port = opts.grpc_port;
+
+    //read network-config.toml
+    let mut buffer = String::new();
+    File::open("network-config.toml")
+        .and_then(|mut f| f.read_to_string(&mut buffer))
+        .unwrap_or_else(|err| panic!("Error while loading config: [{}]", err));
+    let config = NetConfig::new(&buffer);
+
+    // init p2p network
+    let listen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), config.port);
+    // get peers from config
+    let mut peers = Vec::new();
+    for peer in config.peers {
+        let addr_str = format!("{}:{}", peer.ip, peer.port);
+        peers.push(
+            addr_str
+                .to_socket_addrs()
+                .expect("failed to parse socket address")
+                .next()
+                .unwrap(),
+        );
+    }
+
+    let (network_tx, network_rx) = unbounded();
+    let p2p = P2P::new(
+        "network-key".to_owned(),
+        512 * 1024,
+        listen_addr,
+        peers,
+        network_tx,
+    );
+
+    let network_msg_dispatch_table = Arc::new(RwLock::new(HashMap::new()));
+
+    info!("Start network!");
+    let network_msg_dispatch_table_clone = network_msg_dispatch_table.clone();
+    thread::spawn(move || {
+        run_network(network_rx, network_msg_dispatch_table_clone);
+    });
+
+    info!("Start grpc server!");
+    let _ = run_grpc_server(grpc_port, p2p, network_msg_dispatch_table);
+}
+
 pub struct NetworkServer {
-    p2p: Arc<RwLock<Option<P2P>>>,
+    p2p: P2P,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 }
 
 impl NetworkServer {
     fn new(
-        p2p: Arc<RwLock<Option<P2P>>>,
+        p2p: P2P,
         network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
     ) -> NetworkServer {
         NetworkServer {
@@ -200,13 +163,9 @@ impl NetworkService for NetworkServer {
         let msg = request.into_inner();
         let mut buf: Vec<u8> = Vec::new();
         if msg.encode(&mut buf).is_ok() {
-            if let Some(p2p) = self.p2p.read().as_ref() {
-                p2p.send_message(msg.origin as usize, buf.as_slice());
-                let reply = SimpleResponse { is_success: true };
-                Ok(Response::new(reply))
-            } else {
-                Err(Status::internal("network is not ready"))
-            }
+            self.p2p.send_message(msg.origin as usize, buf.as_slice());
+            let reply = SimpleResponse { is_success: true };
+            Ok(Response::new(reply))
         } else {
             Err(Status::internal("encode msg failed"))
         }
@@ -221,13 +180,9 @@ impl NetworkService for NetworkServer {
         let msg = request.into_inner();
         let mut buf: Vec<u8> = Vec::new();
         if msg.encode(&mut buf).is_ok() {
-            if let Some(p2p) = self.p2p.read().as_ref() {
-                p2p.broadcast_message(buf.as_slice());
-                let reply = SimpleResponse { is_success: true };
-                Ok(Response::new(reply))
-            } else {
-                Err(Status::internal("network is not ready"))
-            }
+            self.p2p.broadcast_message(buf.as_slice());
+            let reply = SimpleResponse { is_success: true };
+            Ok(Response::new(reply))
         } else {
             Err(Status::internal("encode msg failed"))
         }
@@ -254,9 +209,8 @@ impl NetworkService for NetworkServer {
         let hostname = info.hostname;
         let port = info.port;
 
-        self.network_msg_dispatch_table
-            .write()
-            .insert(module_name, (hostname, port));
+        let mut network_msg_dispatch_table = self.network_msg_dispatch_table.write().await;
+        network_msg_dispatch_table.insert(module_name, (hostname, port));
 
         let reply = SimpleResponse { is_success: true };
         Ok(Response::new(reply))
@@ -266,7 +220,7 @@ impl NetworkService for NetworkServer {
 #[tokio::main]
 async fn run_grpc_server(
     port: String,
-    p2p: Arc<RwLock<Option<P2P>>>,
+    p2p: P2P,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let addr_str = format!("127.0.0.1:{}", port);
@@ -280,12 +234,6 @@ async fn run_grpc_server(
 
     Ok(())
 }
-
-use cita_ng_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
-use config::NetConfig;
-use p2p_simple::{channel::unbounded, channel::Receiver, channel::Select, P2P};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
-use std::sync::Arc;
 
 async fn dispatch_network_msg(
     port: String,
@@ -302,82 +250,34 @@ async fn dispatch_network_msg(
 }
 
 fn run_network(
-    config_rx: Receiver<String>,
-    p2p: Arc<RwLock<Option<P2P>>>,
+    network_rx: Receiver<(usize, Vec<u8>)>,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 ) {
-    let (network_tx, network_rx) = unbounded();
-
-    let mut sel = Select::new();
-    let oper_config = sel.recv(&config_rx);
-    let oper_network = sel.recv(&network_rx);
-
     let mut rt = Runtime::new().unwrap();
 
     loop {
-        // Wait until a receive operation becomes ready and try executing it.
-        match sel.ready() {
-            i if i == oper_config => {
-                // got new config
-                if let Ok(config_str) = config_rx.try_recv() {
-                    let old_p2p_option = p2p.write().take();
-                    if let Some(old_p2p) = old_p2p_option {
-                        old_p2p.drop();
-                        // wait for p2p's threads to finish
-                        thread::sleep(Duration::new(5, 0));
-                    }
+        if let Ok(msg) = network_rx.recv() {
+            let (sid, payload) = msg;
+            debug!("received msg {:?} from {}", payload, sid);
 
-                    let config = NetConfig::new(&config_str);
-                    // init p2p network
-                    let listen_addr =
-                        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), config.port);
-                    // get peers from config
-                    let mut peers = Vec::new();
-                    for peer in config.peers {
-                        let addr_str = format!("{}:{}", peer.ip, peer.port);
-                        peers.push(
-                            addr_str
-                                .to_socket_addrs()
-                                .expect("failed to parse socket address")
-                                .next()
-                                .unwrap(),
-                        );
-                    }
-                    let new_p2p = Some(P2P::new(
-                        config.privkey_path,
-                        512 * 1024,
-                        listen_addr,
-                        peers,
-                        network_tx.clone(),
-                    ));
-                    {
-                        *p2p.write() = new_p2p;
+            match NetworkMsg::decode(payload.as_slice()) {
+                Ok(msg) => {
+                    let port = {
+                        let table = rt.block_on(network_msg_dispatch_table.read());
+                        if let Some((_hostname, port)) = table.get(&msg.module) {
+                            port.to_owned()
+                        } else {
+                            "".to_owned()
+                        }
+                    };
+                    if !port.is_empty() {
+                        let _ = rt.block_on(dispatch_network_msg(port, msg));
                     }
                 }
-            }
-            i if i == oper_network => {
-                // got network message
-                if let Ok(msg) = network_rx.try_recv() {
-                    let (sid, payload) = msg;
-                    debug!("received msg {:?} from {}", payload, sid);
-
-                    match NetworkMsg::decode(payload.as_slice()) {
-                        Ok(msg) => {
-                            if let Some((_hostname, port)) =
-                                network_msg_dispatch_table.read().get(&msg.module)
-                            {
-                                let _ = rt.block_on(dispatch_network_msg(port.to_owned(), msg));
-                            }
-                        }
-                        Err(e) => {
-                            warn!("network msg decode failed: {}", e);
-                        }
-                    }
-                } else {
-                    warn!("recv network error");
+                Err(e) => {
+                    warn!("network msg decode failed: {}", e);
                 }
             }
-            _ => unreachable!(),
         }
     }
 }
