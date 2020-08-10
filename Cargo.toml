@@ -1,5 +1,5 @@
 [package]
-name = "cita_ng_network"
+name = "network"
 version = "0.1.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
@@ -12,11 +12,11 @@ log = "*"
 log4rs = "*"
 clap = { git = "https://github.com/clap-rs/clap/" }
 git-version = "*"
-p2p_simple = { git = "https://github.com/rink1969/p2p_simple.git", branch = "master" }
+p2p_simple = { git = "https://github.com/cita-cloud/p2p_simple.git", branch = "master" }
 toml = "*"
 serde = "*"
 serde_derive = "*"
 tonic = "0.2"
 prost = "0.6"
 tokio = { version = "0.2", features = ["macros"] }
-cita_ng_proto = { git = "https://github.com/rink1969/cita_ng_proto" }
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }

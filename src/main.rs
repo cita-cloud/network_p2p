@@ -22,7 +22,7 @@ const GIT_VERSION: &str = git_version!(
     args = ["--tags", "--always", "--dirty=-modified"],
     fallback = "unknown"
 );
-const GIT_HOMEPAGE: &str = "https://github.com/rink1969/cita_ng_network";
+const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/network_p2p";
 
 /// network service
 #[derive(Clap)]
@@ -46,7 +46,7 @@ enum SubCommand {
 #[derive(Clap)]
 struct RunOpts {
     /// Sets grpc port of this service.
-    #[clap(short = "p", long = "port", default_value = "50000")]
+    #[clap(short = 'p', long = "port", default_value = "50000")]
     grpc_port: String,
 }
 
@@ -69,8 +69,8 @@ fn main() {
     }
 }
 
-use cita_ng_proto::common::{Empty, SimpleResponse};
-use cita_ng_proto::network::{
+use cita_cloud_proto::common::{Empty, SimpleResponse};
+use cita_cloud_proto::network::{
     network_service_server::NetworkService, network_service_server::NetworkServiceServer,
     NetworkMsg, NetworkStatusResponse, RegisterInfo,
 };
@@ -79,7 +79,7 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
-use cita_ng_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
+use cita_cloud_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
 use config::NetConfig;
 use p2p_simple::{channel::unbounded, channel::Receiver, P2P};
 use std::fs::File;
@@ -261,7 +261,7 @@ fn run_network(
             debug!("received msg {:?} from {}", payload, sid);
 
             match NetworkMsg::decode(payload.as_slice()) {
-                Ok(msg) => {
+                Ok(mut msg) => {
                     let port = {
                         let table = rt.block_on(network_msg_dispatch_table.read());
                         if let Some((_hostname, port)) = table.get(&msg.module) {
@@ -271,6 +271,7 @@ fn run_network(
                         }
                     };
                     if !port.is_empty() {
+                        msg.origin = sid as u64;
                         let _ = rt.block_on(dispatch_network_msg(port, msg));
                     }
                 }
