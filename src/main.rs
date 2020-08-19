@@ -236,14 +236,23 @@ async fn run_grpc_server(
 }
 
 async fn dispatch_network_msg(
+    client_map: Arc<
+        RwLock<HashMap<String, NetworkMsgHandlerServiceClient<tonic::transport::Channel>>>,
+    >,
     port: String,
     msg: NetworkMsg,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dest_addr = format!("http://127.0.0.1:{}", port);
-    let mut client = NetworkMsgHandlerServiceClient::connect(dest_addr).await?;
+    let mut client = client_map.read().await.get(&port).cloned();
 
+    if client.is_none() {
+        let dest_addr = format!("http://127.0.0.1:{}", port);
+        let c = NetworkMsgHandlerServiceClient::connect(dest_addr).await?;
+        client_map.write().await.insert(port, c.clone());
+        client.replace(c);
+    }
+
+    let mut client = client.unwrap();
     let request = Request::new(msg);
-
     let _response = client.process_network_msg(request).await?;
 
     Ok(())
@@ -253,17 +262,21 @@ fn run_network(
     network_rx: Receiver<(usize, Vec<u8>)>,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 ) {
-    let mut rt = Runtime::new().unwrap();
-
-    loop {
-        if let Ok(msg) = network_rx.recv() {
-            let (sid, payload) = msg;
-            debug!("received msg {:?} from {}", payload, sid);
-
-            match NetworkMsg::decode(payload.as_slice()) {
-                Ok(mut msg) => {
+    let client_map = Arc::new(RwLock::new(HashMap::<
+        String,
+        NetworkMsgHandlerServiceClient<tonic::transport::Channel>,
+    >::new()));
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, NetworkMsg)>();
+    std::thread::spawn(move || {
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            while let Some((sid, mut msg)) = rx.recv().await {
+                msg.origin = sid as u64;
+                let dispatch_table = network_msg_dispatch_table.clone();
+                let client_map = client_map.clone();
+                tokio::spawn(async move {
                     let port = {
-                        let table = rt.block_on(network_msg_dispatch_table.read());
+                        let table = dispatch_table.read().await;
                         if let Some((_hostname, port)) = table.get(&msg.module) {
                             port.to_owned()
                         } else {
@@ -271,9 +284,21 @@ fn run_network(
                         }
                     };
                     if !port.is_empty() {
-                        msg.origin = sid as u64;
-                        let _ = rt.block_on(dispatch_network_msg(port, msg));
+                        let _ = dispatch_network_msg(client_map, port, msg).await;
                     }
+                });
+            }
+        });
+    });
+
+    loop {
+        if let Ok(msg) = network_rx.recv() {
+            let (sid, payload) = msg;
+            debug!("received msg {:?} from {}", payload, sid);
+
+            match NetworkMsg::decode(payload.as_slice()) {
+                Ok(msg) => {
+                    tx.send((sid, msg)).expect("send (sid, msg) failed");
                 }
                 Err(e) => {
                     warn!("network msg decode failed: {}", e);
