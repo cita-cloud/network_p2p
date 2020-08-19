@@ -253,17 +253,15 @@ fn run_network(
     network_rx: Receiver<(usize, Vec<u8>)>,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 ) {
-    let mut rt = Runtime::new().unwrap();
-
-    loop {
-        if let Ok(msg) = network_rx.recv() {
-            let (sid, payload) = msg;
-            debug!("received msg {:?} from {}", payload, sid);
-
-            match NetworkMsg::decode(payload.as_slice()) {
-                Ok(mut msg) => {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, NetworkMsg)>();
+    std::thread::spawn(move || {
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            while let Some((sid, mut msg)) = rx.recv().await {
+                let dispatch_table = network_msg_dispatch_table.clone();
+                tokio::spawn(async move {
                     let port = {
-                        let table = rt.block_on(network_msg_dispatch_table.read());
+                        let table = dispatch_table.read().await;
                         if let Some((_hostname, port)) = table.get(&msg.module) {
                             port.to_owned()
                         } else {
@@ -272,8 +270,21 @@ fn run_network(
                     };
                     if !port.is_empty() {
                         msg.origin = sid as u64;
-                        let _ = rt.block_on(dispatch_network_msg(port, msg));
+                        let _ = dispatch_network_msg(port, msg).await;
                     }
+                });
+            }
+        });
+    });
+
+    loop {
+        if let Ok(msg) = network_rx.recv() {
+            let (sid, payload) = msg;
+            debug!("received msg {:?} from {}", payload, sid);
+
+            match NetworkMsg::decode(payload.as_slice()) {
+                Ok(msg) => {
+                    tx.send((sid, msg)).expect("send (sid, msg) failed");
                 }
                 Err(e) => {
                     warn!("network msg decode failed: {}", e);
