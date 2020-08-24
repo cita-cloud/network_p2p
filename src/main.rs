@@ -82,20 +82,15 @@ use tonic::{transport::Server, Request, Response, Status};
 use cita_cloud_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
 use config::NetConfig;
 use p2p_simple::{channel::unbounded, channel::Receiver, P2P};
-use std::fs::File;
-use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
-use std::thread;
-use tokio::runtime::Runtime;
 
-fn run(opts: RunOpts) {
+#[tokio::main]
+async fn run(opts: RunOpts) {
     let grpc_port = opts.grpc_port;
 
     //read network-config.toml
-    let mut buffer = String::new();
-    File::open("network-config.toml")
-        .and_then(|mut f| f.read_to_string(&mut buffer))
+    let buffer = std::fs::read_to_string("network-config.toml")
         .unwrap_or_else(|err| panic!("Error while loading config: [{}]", err));
     let config = NetConfig::new(&buffer);
 
@@ -127,12 +122,10 @@ fn run(opts: RunOpts) {
 
     info!("Start network!");
     let network_msg_dispatch_table_clone = network_msg_dispatch_table.clone();
-    thread::spawn(move || {
-        run_network(network_rx, network_msg_dispatch_table_clone);
-    });
+    tokio::spawn(run_network(network_rx, network_msg_dispatch_table_clone));
 
     info!("Start grpc server!");
-    let _ = run_grpc_server(grpc_port, p2p, network_msg_dispatch_table);
+    let _ = run_grpc_server(grpc_port, p2p, network_msg_dispatch_table).await;
 }
 
 pub struct NetworkServer {
@@ -217,7 +210,6 @@ impl NetworkService for NetworkServer {
     }
 }
 
-#[tokio::main]
 async fn run_grpc_server(
     port: String,
     p2p: P2P,
@@ -258,7 +250,7 @@ async fn dispatch_network_msg(
     Ok(())
 }
 
-fn run_network(
+async fn run_network(
     network_rx: Receiver<(usize, Vec<u8>)>,
     network_msg_dispatch_table: Arc<RwLock<HashMap<String, (String, String)>>>,
 ) {
@@ -267,31 +259,7 @@ fn run_network(
         NetworkMsgHandlerServiceClient<tonic::transport::Channel>,
     >::new()));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, NetworkMsg)>();
-    std::thread::spawn(move || {
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async move {
-            while let Some((sid, mut msg)) = rx.recv().await {
-                msg.origin = sid as u64;
-                let dispatch_table = network_msg_dispatch_table.clone();
-                let client_map = client_map.clone();
-                tokio::spawn(async move {
-                    let port = {
-                        let table = dispatch_table.read().await;
-                        if let Some((_hostname, port)) = table.get(&msg.module) {
-                            port.to_owned()
-                        } else {
-                            "".to_owned()
-                        }
-                    };
-                    if !port.is_empty() {
-                        let _ = dispatch_network_msg(client_map, port, msg).await;
-                    }
-                });
-            }
-        });
-    });
-
-    loop {
+    std::thread::spawn(move || loop {
         if let Ok(msg) = network_rx.recv() {
             let (sid, payload) = msg;
             debug!("received msg {:?} from {}", payload, sid);
@@ -305,5 +273,23 @@ fn run_network(
                 }
             }
         }
+    });
+    while let Some((sid, mut msg)) = rx.recv().await {
+        msg.origin = sid as u64;
+        let dispatch_table = network_msg_dispatch_table.clone();
+        let client_map = client_map.clone();
+        tokio::spawn(async move {
+            let port = {
+                let table = dispatch_table.read().await;
+                if let Some((_hostname, port)) = table.get(&msg.module) {
+                    port.to_owned()
+                } else {
+                    "".to_owned()
+                }
+            };
+            if !port.is_empty() {
+                let _ = dispatch_network_msg(client_map, port, msg).await;
+            }
+        });
     }
 }
