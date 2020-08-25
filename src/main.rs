@@ -48,6 +48,9 @@ struct RunOpts {
     /// Sets grpc port of this service.
     #[clap(short = 'p', long = "port", default_value = "50000")]
     grpc_port: String,
+    /// Sets path of network key file.
+    #[clap(short = 'k', long = "key_file", default_value = "network-key")]
+    key_file: String,
 }
 
 fn main() {
@@ -64,6 +67,7 @@ fn main() {
             // init log4rs
             log4rs::init_file("network-log4rs.yaml", Default::default()).unwrap();
             info!("grpc port of this service: {}", opts.grpc_port);
+            info!("path of key file: {}", opts.key_file);
             run(opts);
         }
     }
@@ -110,13 +114,7 @@ async fn run(opts: RunOpts) {
     }
 
     let (network_tx, network_rx) = unbounded();
-    let p2p = P2P::new(
-        "network-key".to_owned(),
-        512 * 1024,
-        listen_addr,
-        peers,
-        network_tx,
-    );
+    let p2p = P2P::new(opts.key_file, 512 * 1024, listen_addr, peers, network_tx);
 
     let network_msg_dispatch_table = Arc::new(RwLock::new(HashMap::new()));
 
