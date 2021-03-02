@@ -9,14 +9,14 @@ edition = "2018"
 
 [dependencies]
 log = "*"
-log4rs = "*"
+log4rs = { version = "*", features = ["default", "gzip"] }
 clap = "3.0.0-beta.2"
 git-version = "*"
 p2p_simple = { git = "https://github.com/cita-cloud/p2p_simple.git", branch = "master" }
 toml = "*"
 serde = "*"
 serde_derive = "*"
-tonic = "0.2"
-prost = "0.6"
-tokio = { version = "0.2", features = ["macros"] }
+tonic = "*"
+prost = "*"
+tokio = { version = "*", features = ["full"] }
 cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
