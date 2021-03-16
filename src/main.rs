@@ -185,7 +185,9 @@ impl NetworkService for NetworkServer {
     ) -> Result<Response<NetworkStatusResponse>, Status> {
         debug!("register_endpoint request: {:?}", request);
 
-        let reply = NetworkStatusResponse { peer_count: 4 };
+        let reply = NetworkStatusResponse {
+            peer_count: self.p2p.get_peer_count(),
+        };
         Ok(Response::new(reply))
     }
 
