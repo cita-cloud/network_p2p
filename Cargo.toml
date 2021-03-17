@@ -18,3 +18,12 @@ tonic = "*"
 prost = "*"
 tokio = { version = "*", features = ["full"] }
 cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
+
+[profile.release.package."*"]
+# Set the default for dependencies.
+debug = 0
+
+[profile.release]
+# Add debug info -- line tables only
+debug = 1
+
