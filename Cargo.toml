@@ -1,23 +1,23 @@
 [package]
 name = "network"
-version = "0.1.0"
+version = "4.0.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-log = "*"
-log4rs = { version = "*", features = ["gzip"] }
+log = "0.4.14"
+log4rs = { version = "1.0.0", features = ["gzip"] }
 clap = "3.0.0-beta.2"
-git-version = "*"
+git-version = "0.3.4"
 p2p_simple = { git = "https://github.com/cita-cloud/p2p_simple.git", branch = "master" }
-toml = "*"
-serde = "*"
-serde_derive = "*"
-tonic = "*"
-prost = "*"
-tokio = { version = "*", features = ["full"] }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
+toml = "0.5.8"
+serde = "1.0.125"
+serde_derive = "1.0.125"
+tonic = "0.4.1"
+prost = "0.7.0"
+tokio = { version = "1.4.0", features = ["full"] }
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "v4.0.0" }
 
 [profile.release.package."*"]
 # Set the default for dependencies.
