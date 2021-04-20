@@ -114,7 +114,14 @@ async fn run(opts: RunOpts) {
     }
 
     let (network_tx, network_rx) = unbounded();
-    let p2p = P2P::new(opts.key_file, 512 * 1024, listen_addr, peers, network_tx);
+    let p2p = P2P::new(
+        opts.key_file,
+        512 * 1024,
+        listen_addr,
+        peers,
+        network_tx,
+        config.enable_tls,
+    );
 
     let network_msg_dispatch_table = Arc::new(RwLock::new(HashMap::new()));
 
