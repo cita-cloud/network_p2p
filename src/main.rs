@@ -13,7 +13,9 @@
 // limitations under the License.
 
 mod config;
+mod panic_hook;
 
+use crate::panic_hook::set_panic_handler;
 use clap::Clap;
 use git_version::git_version;
 use log::{debug, info, warn};
@@ -55,6 +57,7 @@ struct RunOpts {
 
 fn main() {
     ::std::env::set_var("RUST_BACKTRACE", "full");
+    set_panic_handler();
 
     let opts: Opts = Opts::parse();
 
@@ -190,7 +193,7 @@ impl NetworkService for NetworkServer {
         &self,
         request: Request<Empty>,
     ) -> Result<Response<NetworkStatusResponse>, Status> {
-        debug!("register_endpoint request: {:?}", request);
+        debug!("get_network_status request: {:?}", request);
 
         let reply = NetworkStatusResponse {
             peer_count: self.p2p.get_peer_count(),

@@ -18,6 +18,7 @@ tonic = "*"
 prost = "*"
 tokio = { version = "*", features = ["full"] }
 cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
+backtrace = "*"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
