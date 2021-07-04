@@ -26,6 +26,9 @@ const GIT_VERSION: &str = git_version!(
 );
 const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/network_p2p";
 
+// max: (1 << 24) - 1
+const DEFAULT_GRPC_FRAME: usize = (1 << 24) - 1;
+
 /// network service
 #[derive(Clap)]
 #[clap(version = "0.1.0", author = "Rivtower Technologies.")]
@@ -119,7 +122,7 @@ async fn run(opts: RunOpts) {
     let (network_tx, network_rx) = unbounded();
     let p2p = P2P::new(
         opts.key_file,
-        512 * 1024,
+        DEFAULT_GRPC_FRAME,
         listen_addr,
         peers,
         network_tx,
