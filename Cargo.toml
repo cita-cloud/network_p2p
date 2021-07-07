@@ -1,6 +1,6 @@
 [package]
 name = "network"
-version = "0.1.0"
+version = "6.0.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
 edition = "2018"
@@ -17,7 +17,7 @@ serde_derive = "*"
 tonic = "*"
 prost = "*"
 tokio = { version = "*", features = ["full"] }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "v6.0.0" }
 backtrace = "*"
 
 [profile.release.package."*"]
