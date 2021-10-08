@@ -6,19 +6,31 @@ license = "Apache-2.0"
 edition = "2018"
 
 [dependencies]
-log = "*"
-log4rs = { version = "*", features = ["gzip"] }
+log = "0.4"
+log4rs = { version = "1.0", features = ["gzip"] }
 clap = "3.0.0-beta.2"
-git-version = "*"
-p2p_simple = { git = "https://github.com/cita-cloud/p2p_simple.git", branch = "master" }
-toml = "*"
-serde = "*"
-serde_derive = "*"
-tonic = "*"
-prost = "*"
-tokio = { version = "*", features = ["full"] }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "v6.0.0" }
-backtrace = "*"
+git-version = "0.3"
+toml = "0.5.8"
+serde = "1.0"
+serde_derive = "1.0"
+tonic = "0.5"
+prost = "0.5"
+backtrace = "0.3"
+
+cloud-util = { git = "https://github.com/cita-cloud/cloud-util" }
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "wip-7.0.0-dev" }
+#status_code = { git = "https://github.com/cita-cloud/status_code" }
+status_code = { path = "../../status_code" }
+
+tentacle = { git = "https://github.com/nervosnetwork/tentacle", features = ["tls"] }
+tokio = { version = "1.0", features = ["sync"] }
+tokio-util = { version = "0.6", features = ["codec"] }
+tokio-rustls = "0.22.0"
+futures = { version = "0.3" }
+crossbeam-channel = "0.4"
+bytes = "1.0"
+parking_lot = "0.10"
+hex = "0.4"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
