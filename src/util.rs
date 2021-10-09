@@ -18,7 +18,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 use tokio_rustls::rustls::{
     internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-    AllowAnyAuthenticatedClient, Certificate, ClientConfig, KeyLogFile, NoClientAuth, PrivateKey,
+    AllowAnyAuthenticatedClient, Certificate, ClientConfig, KeyLogFile, PrivateKey,
     ProtocolVersion, RootCertStore, ServerConfig, SupportedCipherSuite, ALL_CIPHERSUITES,
 };
 

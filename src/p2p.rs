@@ -12,22 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future;
-use futures::stream::StreamExt;
 use log::{debug, warn};
 use tentacle::{
-    async_trait,
     builder::{MetaBuilder, ServiceBuilder},
     context::{ProtocolContext, ProtocolContextMutRef, ServiceContext},
     error::DialerErrorKind,
     multiaddr::MultiAddr,
-    secio::SecioKeyPair,
     service::{
-        ProtocolHandle, ServiceAsyncControl, ServiceControl, ServiceError, ServiceEvent,
+        ProtocolHandle, ServiceAsyncControl, ServiceError, ServiceEvent,
         SessionType, TargetProtocol, TargetSession,
     },
     traits::{ServiceHandle, ServiceProtocol},
-    utils::{multiaddr_to_socketaddr, socketaddr_to_multiaddr},
     ProtocolId, SessionId,
 };
 
@@ -41,8 +36,6 @@ use tokio_util::codec::LengthDelimitedCodec;
 use crate::config::NetConfig;
 use status_code::StatusCode;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::str;
 use std::sync::Arc;
 use std::time::Duration;
@@ -92,13 +85,13 @@ struct PHandle {
     peers_manager: PeersManager,
 }
 
-#[async_trait]
+#[tentacle::async_trait]
 impl ServiceProtocol for PHandle {
     async fn init(&mut self, context: &mut ProtocolContext) {
         debug!("init protocol {}", context.proto_id);
     }
 
-    async fn connected(&mut self, context: ProtocolContextMutRef, version: &str) {
+    async fn connected(&mut self, context: ProtocolContextMutRef<'_>, version: &str) {
         let session = context.session;
         debug!(
             "proto id [{}] open on session [{}], address: [{}], type: [{:?}], version: {}",
@@ -110,7 +103,7 @@ impl ServiceProtocol for PHandle {
         }
     }
 
-    async fn disconnected(&mut self, context: ProtocolContextMutRef) {
+    async fn disconnected(&mut self, context: ProtocolContextMutRef<'_>) {
         debug!(
             "proto id [{}] close on session [{}]",
             context.proto_id, context.session.id
@@ -118,7 +111,7 @@ impl ServiceProtocol for PHandle {
         self.peers_manager.remove_peer(context.session.id.value());
     }
 
-    async fn received(&mut self, context: ProtocolContextMutRef, data: bytes::Bytes) {
+    async fn received(&mut self, context: ProtocolContextMutRef<'_>, data: bytes::Bytes) {
         debug!(
             "received from [{}]: proto [{}] data len {} data {:?}",
             context.session.id,
@@ -143,7 +136,7 @@ struct SHandle {
     peers_manager: PeersManager,
 }
 
-#[async_trait]
+#[tentacle::async_trait]
 impl ServiceHandle for SHandle {
     async fn handle_error(&mut self, _context: &mut ServiceContext, error: ServiceError) {
         match error {
@@ -188,11 +181,12 @@ impl P2P {
 
         // create meta of protocol to transfer
         let peers_manager_clone = peers_manager.clone();
+        let grpc_frame = config.grpc_frame;
         let meta = MetaBuilder::new()
             .id(PROTOCOL_ID)
             .codec(move || {
                 let mut lcodec = LengthDelimitedCodec::new();
-                lcodec.set_max_frame_length(config.grpc_frame);
+                lcodec.set_max_frame_length(grpc_frame);
                 Box::new(lcodec)
             })
             .service_handle(move || {
@@ -251,6 +245,7 @@ impl P2P {
 
         addr_receiver.recv().unwrap();
 
+        let controller = service_control.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async move {
@@ -259,7 +254,7 @@ impl P2P {
                     interval.tick().await;
                     for addr in peer_addrs.clone() {
                         if !peers_manager_clone.check_addr_exists(&addr) {
-                            service.dial(addr, TargetProtocol::All).await.unwrap();
+                            controller.dial(addr, TargetProtocol::All).await.unwrap();
                         }
                     }
                 }

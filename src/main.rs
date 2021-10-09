@@ -89,7 +89,6 @@ use cita_cloud_proto::network::network_msg_handler_service_client::NetworkMsgHan
 use config::NetConfig;
 use p2p::{channel::unbounded, channel::Receiver, P2P};
 use status_code::StatusCode;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::sync::Arc;
 use tentacle::multiaddr::MultiAddr;
@@ -121,7 +120,7 @@ async fn run(opts: RunOpts) -> Result<(), StatusCode> {
 
     // init p2p network
     let listen_addr = MultiAddr::from_str(&listen_addr).map_err(|e| {
-        warn!("parse listen multi-addr({}) failed", &listen_addr);
+        warn!("parse listen multi-addr({}) failed: {:?}", &listen_addr, e);
         StatusCode::MultiAddrParseError
     })?;
     // get peers from config
