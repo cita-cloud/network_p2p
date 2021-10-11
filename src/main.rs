@@ -126,7 +126,10 @@ async fn run(opts: RunOpts) -> Result<(), StatusCode> {
     // get peers from config
     let mut peers = Vec::new();
     for peer in &config.peers {
-        peers.push(peer.address.clone());
+        match MultiAddr::from_str(&peer.address) {
+            Ok(peer_address) => peers.push(peer_address),
+            Err(e) => warn!("parse listen multi-addr({}) failed: {:?}", &peer.address, e),
+        }
     }
 
     let (network_tx, network_rx) = unbounded();

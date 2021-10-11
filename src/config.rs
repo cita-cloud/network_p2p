@@ -14,7 +14,6 @@
 
 use cloud_util::common::read_toml;
 use serde_derive::Deserialize;
-use tentacle::multiaddr::MultiAddr;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NetConfig {
@@ -47,7 +46,7 @@ pub struct NetConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PeerConfig {
-    pub address: MultiAddr,
+    pub address: String,
 }
 
 impl Default for NetConfig {
