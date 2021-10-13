@@ -16,6 +16,7 @@ use cloud_util::common::read_toml;
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
 pub struct NetConfig {
     pub domain: String,
 
@@ -45,8 +46,17 @@ pub struct NetConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
 pub struct PeerConfig {
     pub address: String,
+}
+
+impl Default for PeerConfig {
+    fn default() -> Self {
+        Self {
+            address: "".to_string(),
+        }
+    }
 }
 
 impl Default for NetConfig {
@@ -84,6 +94,5 @@ mod tests {
         let config = NetConfig::new("example/config.toml");
 
         assert_eq!(config.grpc_port, 60005);
-        assert_eq!(config.peers[0].address, "kms.db".to_string());
     }
 }

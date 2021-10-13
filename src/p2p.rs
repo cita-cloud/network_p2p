@@ -19,8 +19,8 @@ use tentacle::{
     error::DialerErrorKind,
     multiaddr::MultiAddr,
     service::{
-        ProtocolHandle, ServiceAsyncControl, ServiceError, ServiceEvent,
-        SessionType, TargetProtocol, TargetSession,
+        ProtocolHandle, ServiceAsyncControl, ServiceError, ServiceEvent, SessionType,
+        TargetProtocol, TargetSession,
     },
     traits::{ServiceHandle, ServiceProtocol},
     ProtocolId, SessionId,
@@ -34,13 +34,13 @@ use parking_lot::RwLock;
 use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::config::NetConfig;
+use crate::util::{make_client_config, make_server_config};
 use status_code::StatusCode;
 use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 use std::time::Duration;
 use tentacle::service::TlsConfig;
-use crate::util::{make_server_config, make_client_config};
 
 pub const PROTOCOL_ID: ProtocolId = ProtocolId::new(0);
 
@@ -210,19 +210,15 @@ impl P2P {
                 Some(make_server_config(&config)),
                 Some(make_client_config(&config)),
             );
-            service_cfg = service_cfg
-                .tls_config(tls_config)
+            service_cfg = service_cfg.tls_config(tls_config)
         };
 
         // todo discovery protocol
-        if config.enable_discovery {
+        if config.enable_discovery {}
 
-        }
-
-        let mut service = service_cfg
-            .build(SHandle {
-                peers_manager: peers_manager_clone,
-            });
+        let mut service = service_cfg.build(SHandle {
+            peers_manager: peers_manager_clone,
+        });
 
         let service_control = service.control().clone();
 
@@ -249,12 +245,13 @@ impl P2P {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(300));
+                let mut interval = tokio::time::interval(Duration::from_secs(10));
                 loop {
                     interval.tick().await;
                     for addr in peer_addrs.clone() {
                         if !peers_manager_clone.check_addr_exists(&addr) {
-                            controller.dial(addr, TargetProtocol::All).await.unwrap();
+                            log::info!("dial node({})", &addr);
+                            let _ = controller.dial(addr, TargetProtocol::All).await;
                         }
                     }
                 }

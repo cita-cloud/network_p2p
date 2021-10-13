@@ -142,7 +142,9 @@ async fn run(opts: RunOpts) -> Result<(), StatusCode> {
     tokio::spawn(run_network(network_rx, network_msg_dispatch_table_clone));
 
     info!("Start grpc server!");
-    let _ = run_grpc_server(grpc_port, p2p, network_msg_dispatch_table).await;
+    run_grpc_server(grpc_port, p2p, network_msg_dispatch_table)
+        .await
+        .unwrap();
 
     Ok(())
 }
