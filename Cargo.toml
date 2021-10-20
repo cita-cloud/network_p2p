@@ -21,10 +21,10 @@ cloud-util = { git = "https://github.com/cita-cloud/cloud-util" }
 cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "wip-7.0.0-dev" }
 status_code = { git = "https://github.com/cita-cloud/status_code" }
 
-tentacle = { git = "https://github.com/nervosnetwork/tentacle", features = ["tls"] }
+tentacle = { git = "https://github.com/Pencil-Yao/tentacle", branch = "smx-update", features = ["tls"] }
 tokio = { version = "1.0", features = ["sync"] }
 tokio-util = { version = "0.6", features = ["codec"] }
-tokio-rustls = "0.22.0"
+tokio-rustls = { git = "https://github.com/Pencil-Yao/tls", branch = "smx" }
 futures = { version = "0.3" }
 crossbeam-channel = "0.4"
 bytes = "1.0"
