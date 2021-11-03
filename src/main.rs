@@ -13,7 +13,9 @@
 // limitations under the License.
 
 mod config;
+mod p2p;
 mod panic_hook;
+mod util;
 
 use crate::panic_hook::set_panic_handler;
 use clap::Clap;
@@ -25,9 +27,6 @@ const GIT_VERSION: &str = git_version!(
     fallback = "unknown"
 );
 const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/network_p2p";
-
-// max: (1 << 24) - 1
-const DEFAULT_GRPC_FRAME: usize = (1 << 24) - 1;
 
 /// network service
 #[derive(Clap)]
@@ -53,9 +52,9 @@ struct RunOpts {
     /// Sets grpc port of this service.
     #[clap(short = 'p', long = "port", default_value = "50000")]
     grpc_port: String,
-    /// Sets path of network key file.
-    #[clap(short = 'k', long = "key_file", default_value = "network-key")]
-    key_file: String,
+    /// Chain config path
+    #[clap(short = 'c', long = "config", default_value = "config.toml")]
+    config_path: String,
 }
 
 fn main() {
@@ -70,16 +69,12 @@ fn main() {
             println!("homepage: {}", GIT_HOMEPAGE);
         }
         SubCommand::Run(opts) => {
-            // init log4rs
-            log4rs::init_file("network-log4rs.yaml", Default::default()).unwrap();
-            info!("grpc port of this service: {}", opts.grpc_port);
-            info!("path of key file: {}", opts.key_file);
-            run(opts);
+            let fin = run(opts);
+            warn!("Should not reach here {:?}", fin);
         }
     }
 }
 
-use cita_cloud_proto::common::{Empty, SimpleResponse};
 use cita_cloud_proto::network::{
     network_service_server::NetworkService, network_service_server::NetworkServiceServer,
     NetworkMsg, NetworkStatusResponse, RegisterInfo,
@@ -89,45 +84,56 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
+use cita_cloud_proto::common::{Empty, NodeNetInfo, TotalNodeNetInfo};
 use cita_cloud_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
 use config::NetConfig;
-use p2p_simple::{channel::unbounded, channel::Receiver, P2P};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use p2p::{channel::unbounded, channel::Receiver, P2P};
+use status_code::StatusCode;
+use std::str::FromStr;
 use std::sync::Arc;
+use tentacle::multiaddr::MultiAddr;
 
 #[tokio::main]
-async fn run(opts: RunOpts) {
-    let grpc_port = opts.grpc_port;
+async fn run(opts: RunOpts) -> Result<(), StatusCode> {
+    let config = NetConfig::new(&opts.config_path);
+    // init log4rs
+    log4rs::init_file(&config.log_file, Default::default()).unwrap();
 
-    //read network-config.toml
-    let buffer = std::fs::read_to_string("network-config.toml")
-        .unwrap_or_else(|err| panic!("Error while loading config: [{}]", err));
-    let config = NetConfig::new(&buffer);
+    let grpc_port = {
+        if "50000" != opts.grpc_port {
+            opts.grpc_port.clone()
+        } else if config.grpc_port != 50000 {
+            config.grpc_port.to_string()
+        } else {
+            "50000".to_string()
+        }
+    };
+    info!("grpc port of this service: {}", grpc_port);
+
+    let listen_addr = {
+        if config.enable_tls {
+            format!("/ip4/0.0.0.0/tcp/{}/tls/{}", config.port, &config.domain)
+        } else {
+            format!("/ip4/0.0.0.0/tcp/{}", config.port)
+        }
+    };
 
     // init p2p network
-    let listen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), config.port);
+    let listen_addr = MultiAddr::from_str(&listen_addr).map_err(|e| {
+        warn!("parse listen multi-addr({}) failed: {:?}", &listen_addr, e);
+        StatusCode::MultiAddrParseError
+    })?;
     // get peers from config
     let mut peers = Vec::new();
-    for peer in config.peers {
-        let addr_str = format!("{}:{}", peer.ip, peer.port);
-        peers.push(
-            addr_str
-                .to_socket_addrs()
-                .expect("failed to parse socket address")
-                .next()
-                .unwrap(),
-        );
+    for peer in &config.peers {
+        match MultiAddr::from_str(&peer.address) {
+            Ok(peer_address) => peers.push(peer_address),
+            Err(e) => warn!("parse listen multi-addr({}) failed: {:?}", &peer.address, e),
+        }
     }
 
     let (network_tx, network_rx) = unbounded();
-    let p2p = P2P::new(
-        opts.key_file,
-        DEFAULT_GRPC_FRAME,
-        listen_addr,
-        peers,
-        network_tx,
-        config.enable_tls,
-    );
+    let p2p = P2P::new(config, listen_addr, peers, network_tx);
 
     let network_msg_dispatch_table = Arc::new(RwLock::new(HashMap::new()));
 
@@ -136,7 +142,11 @@ async fn run(opts: RunOpts) {
     tokio::spawn(run_network(network_rx, network_msg_dispatch_table_clone));
 
     info!("Start grpc server!");
-    let _ = run_grpc_server(grpc_port, p2p, network_msg_dispatch_table).await;
+    run_grpc_server(grpc_port, p2p, network_msg_dispatch_table)
+        .await
+        .unwrap();
+
+    Ok(())
 }
 
 pub struct NetworkServer {
@@ -161,34 +171,37 @@ impl NetworkService for NetworkServer {
     async fn send_msg(
         &self,
         request: Request<NetworkMsg>,
-    ) -> Result<Response<SimpleResponse>, Status> {
+    ) -> Result<Response<cita_cloud_proto::common::StatusCode>, Status> {
         debug!("send_msg request: {:?}", request);
 
         let msg = request.into_inner();
         let mut buf: Vec<u8> = Vec::new();
         if msg.encode(&mut buf).is_ok() {
-            self.p2p.send_message(msg.origin as usize, buf.as_slice());
-            let reply = SimpleResponse { is_success: true };
-            Ok(Response::new(reply))
+            let status = self
+                .p2p
+                .send_message(msg.origin as usize, buf.as_slice())
+                .await;
+            Ok(Response::new(status.into()))
         } else {
-            Err(Status::internal("encode msg failed"))
+            warn!("send_msg: encode NetworkMsg failed");
+            Ok(Response::new(StatusCode::EncodeError.into()))
         }
     }
 
     async fn broadcast(
         &self,
         request: Request<NetworkMsg>,
-    ) -> Result<Response<SimpleResponse>, Status> {
+    ) -> Result<Response<cita_cloud_proto::common::StatusCode>, Status> {
         debug!("broadcast request: {:?}", request);
 
         let msg = request.into_inner();
         let mut buf: Vec<u8> = Vec::new();
         if msg.encode(&mut buf).is_ok() {
-            self.p2p.broadcast_message(buf.as_slice());
-            let reply = SimpleResponse { is_success: true };
-            Ok(Response::new(reply))
+            let status = self.p2p.broadcast_message(buf.as_slice()).await;
+            Ok(Response::new(status.into()))
         } else {
-            Err(Status::internal("encode msg failed"))
+            warn!("broadcast: encode NetworkMsg failed");
+            Ok(Response::new(StatusCode::EncodeError.into()))
         }
     }
 
@@ -198,16 +211,15 @@ impl NetworkService for NetworkServer {
     ) -> Result<Response<NetworkStatusResponse>, Status> {
         debug!("get_network_status request: {:?}", request);
 
-        let reply = NetworkStatusResponse {
+        Ok(Response::new(NetworkStatusResponse {
             peer_count: self.p2p.get_peer_count(),
-        };
-        Ok(Response::new(reply))
+        }))
     }
 
     async fn register_network_msg_handler(
         &self,
         request: Request<RegisterInfo>,
-    ) -> Result<Response<SimpleResponse>, Status> {
+    ) -> Result<Response<cita_cloud_proto::common::StatusCode>, Status> {
         debug!("register_network_msg_handler request: {:?}", request);
 
         let info = request.into_inner();
@@ -218,8 +230,41 @@ impl NetworkService for NetworkServer {
         let mut network_msg_dispatch_table = self.network_msg_dispatch_table.write().await;
         network_msg_dispatch_table.insert(module_name, (hostname, port));
 
-        let reply = SimpleResponse { is_success: true };
-        Ok(Response::new(reply))
+        Ok(Response::new(StatusCode::Success.into()))
+    }
+
+    async fn add_node(
+        &self,
+        request: Request<NodeNetInfo>,
+    ) -> Result<Response<cita_cloud_proto::common::StatusCode>, Status> {
+        debug!("add_node request: {:?}", request);
+
+        let info = request.into_inner();
+        if let Ok(addr) = MultiAddr::from_str(&info.multi_address) {
+            Ok(Response::new(self.p2p.add_node(addr).await.into()))
+        } else {
+            warn!("add_node: parse multi-addr({}) failed", &info.multi_address);
+            Ok(Response::new(StatusCode::MultiAddrParseError.into()))
+        }
+    }
+
+    async fn get_peers_net_info(
+        &self,
+        _: Request<Empty>,
+    ) -> Result<Response<TotalNodeNetInfo>, Status> {
+        debug!("get_peers_net_info request");
+
+        let infos = self.p2p.get_peers_info();
+        let mut nodes = Vec::new();
+
+        for info in infos {
+            nodes.push(NodeNetInfo {
+                multi_address: info.1.to_string(),
+                origin: info.0 as u64,
+            })
+        }
+
+        Ok(Response::new(TotalNodeNetInfo { nodes }))
     }
 }
 

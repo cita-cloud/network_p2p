@@ -12,24 +12,76 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use cloud_util::common::read_toml;
 use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
 pub struct NetConfig {
-    pub enable_tls: bool,
+    pub domain: String,
+
     pub port: u16,
+
+    pub grpc_port: u16,
+
     pub peers: Vec<PeerConfig>,
+
+    pub grpc_frame: usize,
+
+    pub enable_tls: bool,
+
+    pub server_chain_certs: Option<String>,
+
+    pub server_key: Option<String>,
+
+    pub ca_cert: Option<String>,
+
+    pub protocols: Option<Vec<String>>,
+
+    pub cypher_suits: Option<Vec<String>>,
+
+    pub enable_discovery: bool,
+
+    pub log_file: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
 pub struct PeerConfig {
-    pub ip: String,
-    pub port: u16,
+    pub address: String,
+}
+
+impl Default for PeerConfig {
+    fn default() -> Self {
+        Self {
+            address: "".to_string(),
+        }
+    }
+}
+
+impl Default for NetConfig {
+    fn default() -> Self {
+        Self {
+            enable_tls: false,
+            domain: "".to_string(),
+            port: 40000,
+            grpc_port: 50000,
+            peers: vec![],
+            grpc_frame: (1 << 24) - 1,
+            server_chain_certs: None,
+            server_key: None,
+            ca_cert: None,
+            protocols: None,
+            cypher_suits: None,
+            enable_discovery: false,
+            log_file: "network-log4rs.yaml".to_string(),
+        }
+    }
 }
 
 impl NetConfig {
     pub fn new(config_str: &str) -> Self {
-        toml::from_str::<NetConfig>(config_str).expect("Error while parsing config")
+        read_toml(config_str, "network_p2p")
     }
 }
 
@@ -39,20 +91,8 @@ mod tests {
 
     #[test]
     fn basic_test() {
-        let toml_str = r#"
-        enable_tls = false
-        port = 40000
-        [[peers]]
-            ip = "127.0.0.1"
-            port = 40001
-        [[peers]]
-            ip = "127.0.0.1"
-            port = 40002
-        "#;
+        let config = NetConfig::new("example/config.toml");
 
-        let config = NetConfig::new(toml_str);
-
-        assert_eq!(config.port, 40000);
-        assert_eq!(config.peers.len(), 2);
+        assert_eq!(config.grpc_port, 60005);
     }
 }
