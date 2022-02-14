@@ -19,8 +19,8 @@ use tentacle::{
     error::DialerErrorKind,
     multiaddr::MultiAddr,
     service::{
-        ProtocolHandle, ServiceAsyncControl, ServiceError, ServiceEvent, SessionType,
-        TargetProtocol, TargetSession,
+        ProtocolHandle, ServiceAsyncControl, ServiceError, ServiceEvent, TargetProtocol,
+        TargetSession,
     },
     traits::{ServiceHandle, ServiceProtocol},
     ProtocolId, SessionId,
@@ -46,12 +46,12 @@ pub const PROTOCOL_ID: ProtocolId = ProtocolId::new(0);
 
 #[derive(Clone)]
 struct PeersManager {
-    outbound_peers: Arc<RwLock<HashMap<usize, MultiAddr>>>,
+    bound_peers: Arc<RwLock<HashMap<usize, MultiAddr>>>,
 }
 
 impl PeersManager {
     fn check_addr_exists(&self, addr: &MultiAddr) -> bool {
-        for (_, v) in self.outbound_peers.read().iter() {
+        for (_, v) in self.bound_peers.read().iter() {
             if v == addr {
                 return true;
             }
@@ -60,20 +60,20 @@ impl PeersManager {
     }
 
     fn add_peer(&self, session_id: usize, peer: &MultiAddr) {
-        self.outbound_peers.write().insert(session_id, peer.clone());
+        self.bound_peers.write().insert(session_id, peer.clone());
     }
 
     fn remove_peer(&self, session_id: usize) {
-        let _ = self.outbound_peers.write().remove_entry(&session_id);
+        let _ = self.bound_peers.write().remove_entry(&session_id);
     }
 
     fn peer_count(&self) -> u64 {
-        self.outbound_peers.read().len() as u64
+        (self.bound_peers.read().len() as u64 + 1) / 2
     }
 
     fn get_peers(&self) -> Vec<(usize, MultiAddr)> {
         let mut infos = Vec::new();
-        for (origin, add) in self.outbound_peers.read().iter() {
+        for (origin, add) in self.bound_peers.read().iter() {
             infos.push((*origin, add.clone()))
         }
         infos
@@ -97,10 +97,8 @@ impl ServiceProtocol for PHandle {
             "proto id [{}] open on session [{}], address: [{}], type: [{:?}], version: {}",
             context.proto_id, session.id, session.address, session.ty, version
         );
-        if session.ty == SessionType::Outbound {
-            self.peers_manager
-                .add_peer(session.id.value(), &session.address);
-        }
+        self.peers_manager
+            .add_peer(session.id.value(), &session.address);
     }
 
     async fn disconnected(&mut self, context: ProtocolContextMutRef<'_>) {
@@ -176,7 +174,7 @@ impl P2P {
     ) -> P2P {
         // shared peers manager struct
         let peers_manager = PeersManager {
-            outbound_peers: Arc::new(RwLock::new(HashMap::new())),
+            bound_peers: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // create meta of protocol to transfer
