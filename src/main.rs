@@ -49,12 +49,12 @@ enum SubCommand {
 /// A subcommand for run
 #[derive(Parser)]
 struct RunOpts {
-    /// Sets grpc port of this service.
-    #[clap(short = 'p', long = "port", default_value = "50000")]
-    grpc_port: String,
     /// Chain config path
     #[clap(short = 'c', long = "config", default_value = "config.toml")]
     config_path: String,
+    /// log config path
+    #[clap(short = 'l', long = "log", default_value = "network-log4rs.yaml")]
+    log_file: String,
 }
 
 fn main() {
@@ -97,17 +97,11 @@ use tentacle::multiaddr::MultiAddr;
 async fn run(opts: RunOpts) -> Result<(), StatusCode> {
     let config = NetConfig::new(&opts.config_path);
     // init log4rs
-    log4rs::init_file(&config.log_file, Default::default()).unwrap();
+    log4rs::init_file(&opts.log_file, Default::default())
+        .map_err(|e| println!("log init err: {}", e))
+        .unwrap();
 
-    let grpc_port = {
-        if "50000" != opts.grpc_port {
-            opts.grpc_port.clone()
-        } else if config.grpc_port != 50000 {
-            config.grpc_port.to_string()
-        } else {
-            "50000".to_string()
-        }
-    };
+    let grpc_port = config.grpc_port.to_string();
     info!("grpc port of this service: {}", grpc_port);
 
     let listen_addr = {
