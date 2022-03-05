@@ -41,8 +41,6 @@ pub struct NetConfig {
     pub cypher_suits: Option<Vec<String>>,
 
     pub enable_discovery: bool,
-
-    pub log_file: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -74,7 +72,6 @@ impl Default for NetConfig {
             protocols: None,
             cypher_suits: None,
             enable_discovery: false,
-            log_file: "network-log4rs.yaml".to_string(),
         }
     }
 }
