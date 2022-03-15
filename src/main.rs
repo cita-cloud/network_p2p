@@ -30,7 +30,7 @@ const GIT_HOMEPAGE: &str = "https://github.com/cita-cloud/network_p2p";
 
 /// network service
 #[derive(Parser)]
-#[clap(version = "0.1.0", author = "Rivtower Technologies.")]
+#[clap(version, author)]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
