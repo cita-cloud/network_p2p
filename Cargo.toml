@@ -1,9 +1,9 @@
 [package]
 name = "network"
-version = "6.3.0"
+version = "6.4.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 log = "0.4"
@@ -30,9 +30,6 @@ crossbeam-channel = "0.4"
 bytes = "1.0"
 parking_lot = "0.10"
 hex = "0.4"
-
-[patch."https://github.com/cita-cloud/cita_cloud_proto"]
-cita_cloud_proto = { git = "https://github.com/rink1969/cita_cloud_proto.git", branch = "health_check" }
 
 [profile.release.package."*"]
 # Set the default for dependencies.
