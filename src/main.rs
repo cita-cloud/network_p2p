@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod config;
+mod health_check;
 mod p2p;
 mod panic_hook;
 mod util;
@@ -84,7 +85,9 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
+use crate::health_check::HealthCheckServer;
 use cita_cloud_proto::common::{Empty, NodeNetInfo, TotalNodeNetInfo};
+use cita_cloud_proto::health_check::health_server::HealthServer;
 use cita_cloud_proto::network::network_msg_handler_service_client::NetworkMsgHandlerServiceClient;
 use config::NetConfig;
 use p2p::{channel::unbounded, channel::Receiver, P2P};
@@ -273,6 +276,7 @@ async fn run_grpc_server(
 
     Server::builder()
         .add_service(NetworkServiceServer::new(network_server))
+        .add_service(HealthServer::new(HealthCheckServer {}))
         .serve(addr)
         .await?;
 

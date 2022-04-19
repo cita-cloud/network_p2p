@@ -1,9 +1,9 @@
 [package]
 name = "network"
-version = "6.3.0"
+version = "6.4.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 log = "0.4"
