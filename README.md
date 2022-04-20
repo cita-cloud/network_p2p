@@ -11,8 +11,8 @@ docker build -t citacloud/network_p2p .
 
 ```
 $ network -h
-network 6.3.3
-Rivtower Technologies.
+network 6.4.0
+Rivtower Technologies <contact@rivtower.com>
 network service
 
 USAGE:
@@ -23,19 +23,8 @@ OPTIONS:
     -V, --version    Print version information
 
 SUBCOMMANDS:
-    git     print information from git
     help    Print this message or the help of the given subcommand(s)
     run     run this service
-```
-
-### network-git
-
-打印`git`相关的信息。
-
-```
-$ network git   
-git version: 9728329-modified
-homepage: https://github.com/cita-cloud/network_p2p
 ```
 
 ### network-run

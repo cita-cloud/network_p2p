@@ -90,6 +90,6 @@ mod tests {
     fn basic_test() {
         let config = NetConfig::new("example/config.toml");
 
-        assert_eq!(config.grpc_port, 60005);
+        assert_eq!(config.grpc_port, 50000);
     }
 }

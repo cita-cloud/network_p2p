@@ -8,9 +8,8 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 log4rs = { version = "1.0", features = ["gzip"] }
-clap = { version = "3.0.14", features = ["derive"] }
-git-version = "0.3"
-toml = "0.5.8"
+clap = { version = "3.1", features = ["derive"] }
+toml = "0.5"
 serde = "1.0"
 serde_derive = "1.0"
 tonic = "0.5"
@@ -22,14 +21,12 @@ cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
 status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/status_code" }
 
 tentacle = { git = "https://github.com/Pencil-Yao/tentacle", branch = "smx-update", features = ["tls"] }
-tokio = { version = "1.0", features = ["sync"] }
+tokio = { version = "1.17", features = ["sync"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 tokio-rustls = { git = "https://github.com/Pencil-Yao/tls", branch = "smx" }
-futures = { version = "0.3" }
-crossbeam-channel = "0.4"
+crossbeam-channel = "0.5"
 bytes = "1.0"
-parking_lot = "0.10"
-hex = "0.4"
+parking_lot = "0.12"
 
 [profile.release.package."*"]
 # Set the default for dependencies.
