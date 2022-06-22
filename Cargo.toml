@@ -1,6 +1,6 @@
 [package]
 name = "network"
-version = "6.4.0"
+version = "6.5.0"
 authors = ["Rivtower Technologies <contact@rivtower.com>"]
 license = "Apache-2.0"
 edition = "2021"
@@ -16,9 +16,9 @@ tonic = "0.5"
 prost = "0.8"
 backtrace = "0.3"
 
-cloud-util = { git = "https://github.com/cita-cloud/cloud-util" }
-cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto" }
-status_code = { package = "cloud-code", git = "https://github.com/cita-cloud/status_code" }
+cloud-util = "0.3.0"
+cita_cloud_proto = "=6.5.0"
+status_code = { package = "cloud-code", version = "0.3.0" }
 
 tentacle = { git = "https://github.com/Pencil-Yao/tentacle", branch = "smx-update", features = ["tls"] }
 tokio = { version = "1.17", features = ["sync"] }
